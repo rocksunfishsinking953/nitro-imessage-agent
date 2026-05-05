@@ -5,9 +5,10 @@ A **durable** iMessage AI agent built on:
 - [Nitro](https://nitro.build) v3 — the API server
 - [Chat SDK](https://chat-sdk.dev) + [`chat-adapter-sendblue`](https://chat-sdk.dev/adapters/sendblue) — message routing over [Sendblue](https://sendblue.com)
 - [Vercel AI SDK](https://sdk.vercel.ai) + [AI Gateway](https://vercel.com/docs/ai-gateway) — LLM replies, swap models with one constant
-- [Vercel Workflow](https://useworkflow.dev) + `@workflow/ai`'s `DurableAgent` — durable agent loop, retryable steps, observability
+- [Vercel Workflow](https://useworkflow.dev) — durable orchestration with retryable `"use step"` units
+- [evlog](https://www.evlog.dev) — structured wide-event logging with first-class AI SDK integration (token usage, tool calls, cost estimation)
 
-A user texts your Sendblue number, Sendblue posts a webhook to this server, the Chat SDK dispatches the message, a workflow runs an agent (LLM + tools), and the final reply is sent back through Sendblue. Each step is retryable on its own, so a transient LLM error or send hiccup never drops the inbound message.
+A user texts your Sendblue number, Sendblue posts a webhook to this server, the Chat SDK dispatches the message, a workflow runs an agent step (LLM + tools), and the final reply is sent back through Sendblue. Each step is retryable on its own, so a transient LLM error or send hiccup never drops the inbound message.
 
 ```
    ┌─────────┐    ┌──────────────┐    ┌──────────────┐   ┌────────────┐
@@ -21,9 +22,10 @@ A user texts your Sendblue number, Sendblue posts a webhook to this server, the 
         │                                           └───────────┬────────────┘
         │                                                       ▼
         │                                           ┌────────────────────────┐
-        │                                           │ DurableAgent.stream()  │
+        │                                           │ generateReply(use step)│
         │                                           │  ├── LLM (AI Gateway)  │
-        │                                           │  └── tools (use step)  │
+        │                                           │  ├── tools roundtrip   │
+        │                                           │  └── evlog wide event  │
         │                                           └───────────┬────────────┘
         │                                                       ▼
         │                                           ┌────────────────────────┐
@@ -38,7 +40,12 @@ The Sendblue cloud holds your dedicated phone line and forwards inbound iMessage
 
 The [server/api/webhooks/sendblue.post.ts](server/api/webhooks/sendblue.post.ts) route receives every webhook and hands it to `chat.webhooks.sendblue(request)`. The Chat SDK then fires `onNewMention` (first DM in a thread) or `onSubscribedMessage` (every following DM) on the bot — handlers registered in [server/plugins/imessage.ts](server/plugins/imessage.ts) call `start(replyToMessage, [thread.id, message.text])` to queue a workflow.
 
-[workflows/reply.ts](workflows/reply.ts) is a `"use workflow"` function. Inside, a `DurableAgent` (`@workflow/ai/agent`) drives the LLM loop against the Vercel AI Gateway. Tools registered in [server/tools/](server/tools/) use `"use step"` so each tool call is a retryable, observable step. After the agent finishes, the final assistant text is sent through one more `"use step"` (`postReply`) that calls `sendblue.postMessage`.
+[workflows/reply.ts](workflows/reply.ts) is a thin `"use workflow"` function that just chains two retryable steps from [server/utils/agent-steps.ts](server/utils/agent-steps.ts):
+
+1. **`generateReply` step** — calls `generateText` against the Vercel AI Gateway. Tools registered in [server/tools/](server/tools/) are looped with `stopWhen: stepCountIs(5)` (LLM → tool → LLM until done). The model is wrapped with `evlog/ai`'s `ai.wrap()` and `experimental_telemetry.integrations` carries `createEvlogIntegration(ai)` so token usage, tool execution timing, and estimated cost are captured into a wide event.
+2. **`postReply` step** — calls `sendblue.postMessage`. Independent retryability: a transient send error doesn't re-run the LLM call.
+
+Workflow functions can't import Node-only packages like evlog directly, so the AI SDK calls live in steps (which run as normal Node) — that's why the actual logic is in `server/utils/agent-steps.ts` and the workflow file just orchestrates.
 
 ## Local setup (development)
 
@@ -104,7 +111,7 @@ That's it — no `vercel.json`, no cron, no Mac. The Vercel function spins up on
 
 ## Switching the model
 
-Edit one constant in [workflows/reply.ts](workflows/reply.ts):
+Edit one constant in [server/utils/agent-steps.ts](server/utils/agent-steps.ts):
 
 ```ts
 const MODEL = 'google/gemini-3-flash'
@@ -152,32 +159,58 @@ export const tools = {
 }
 ```
 
-To add another tool, write a new step function and register it in the `tools` map. The agent picks it up automatically through `new DurableAgent({ tools })`.
+To add another tool, write a new step function and register it in the `tools` map. The agent picks it up automatically — `generateText` discovers them at call time.
 
 ### Change the system prompt
 
-Edit `SYSTEM_PROMPT` in [workflows/reply.ts](workflows/reply.ts).
+Edit `SYSTEM_PROMPT` in [server/utils/agent-steps.ts](server/utils/agent-steps.ts).
 
 ### Add a workflow step
 
-Any function annotated with `"use step"` becomes a retryable, durable step. Wrap higher-level orchestration in a `"use workflow"` function and call steps from it. See [Workflows and steps](https://useworkflow.dev/docs/foundations/workflows-and-steps) for the full mental model. [workflows/reply.ts](workflows/reply.ts) is the canonical example: a `"use workflow"` function calling `DurableAgent.stream()` (which itself orchestrates LLM/tool steps) followed by a `postReply` step.
+Any function annotated with `"use step"` becomes a retryable, durable step. Wrap higher-level orchestration in a `"use workflow"` function and call steps from it. See [Workflows and steps](https://useworkflow.dev/docs/foundations/workflows-and-steps) for the full mental model. [workflows/reply.ts](workflows/reply.ts) is the canonical example: a thin `"use workflow"` function chaining `generateReply` and `postReply` steps from [server/utils/agent-steps.ts](server/utils/agent-steps.ts).
+
+> Workflow functions can't import Node-only modules (evlog, native bindings, etc.). Keep heavy logic in `"use step"` files outside `workflows/` and import them into the workflow.
+
+### Tweak AI observability
+
+`createAILogger(log, { cost })` in [server/utils/agent-steps.ts](server/utils/agent-steps.ts) controls token-cost estimation. Update `COST_MAP` with your real Gateway pricing, or set `cost` to `undefined` to disable. The wide event under the `ai.*` namespace already includes `inputTokens`, `outputTokens`, `toolCalls`, `tools[]` (timing per tool from `createEvlogIntegration`), `msToFirstChunk`, `tokensPerSecond`, and `estimatedCost`. See [evlog AI SDK docs](https://www.evlog.dev/logging/ai-sdk/overview) for the full field list.
+
+### Add a drain (Axiom, OTLP, Sentry, …)
+
+The Nitro evlog module exposes a `evlog:drain` hook. Drop a server plugin to forward wide events to your observability backend:
+
+```ts
+// server/plugins/evlog-drain.ts
+import { createAxiomDrain } from 'evlog/axiom'
+
+export default defineNitroPlugin((nitroApp) => {
+  nitroApp.hooks.hook('evlog:drain', createAxiomDrain())
+})
+```
+
+Other adapters: `evlog/otlp`, `evlog/hyperdx`, `evlog/posthog`, `evlog/sentry`, `evlog/better-stack`, `evlog/datadog`. Full list at [evlog adapters](https://www.evlog.dev/adapters).
 
 ## Project layout
 
 ```
 workflows/
-  reply.ts                          # "use workflow" — DurableAgent + postReply step
+  reply.ts                          # "use workflow" — chains generateReply + postReply
 server/
   api/
     index.ts                        # GET /api — health check
     webhooks/sendblue.post.ts       # POST /api/webhooks/sendblue — Sendblue inbound webhook
   plugins/imessage.ts               # Chat SDK handlers, queues the workflow on each DM
-  tools/index.ts                    # tools registered with the DurableAgent
+  tools/index.ts                    # tools passed to generateText (use step)
+  utils/agent-steps.ts              # generateReply + postReply steps; evlog AI wiring lives here
   utils/bot.ts                      # Chat instance + Sendblue adapter (singleton)
-nitro.config.ts                     # registers `workflow/nitro`
+nitro.config.ts                     # registers `workflow/nitro` and `evlog/nitro/v3`
 ```
 
 ## Observability
+
+Two layers, both opt-in through this repo's defaults:
+
+**Workflow runs** — durable execution, step retries, replay debugging:
 
 ```bash
 pnpm workflow:web         # local dashboard with run history, step retries, live logs
@@ -185,6 +218,8 @@ npx workflow inspect runs # CLI
 ```
 
 In production on Vercel, runs show up automatically in the Vercel dashboard.
+
+**Wide events** — every webhook + every workflow step emits a structured wide event via [evlog](https://www.evlog.dev). The AI SDK integration captures token usage, tool execution timing, and cost estimation under the `ai.*` namespace automatically. By default events go to console (pretty in dev, JSON in prod). Configure a drain (Axiom, OTLP, Sentry, …) to ship them to your backend — see "Add a drain" above.
 
 ## Scripts
 
@@ -204,9 +239,12 @@ pnpm typecheck  # tsc --noEmit
 - [Sendblue pricing](https://sendblue.com/pricing)
 - [Chat SDK docs](https://chat-sdk.dev)
 - [Vercel Workflow](https://useworkflow.dev) — durable execution model
-- [`DurableAgent` API](https://useworkflow.dev/docs/api-reference/workflow-ai/durable-agent)
+- [Workflows and steps](https://useworkflow.dev/docs/foundations/workflows-and-steps)
 - [Vercel AI SDK](https://sdk.vercel.ai)
 - [AI Gateway models](https://vercel.com/ai-gateway/models)
+- [evlog](https://www.evlog.dev) — wide-event logging
+- [evlog AI SDK integration](https://www.evlog.dev/logging/ai-sdk/overview)
+- [evlog drain adapters](https://www.evlog.dev/adapters)
 - [Nitro](https://nitro.build)
 - [ngrok](https://ngrok.com/download)
 

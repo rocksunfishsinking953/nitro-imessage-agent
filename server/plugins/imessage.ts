@@ -9,12 +9,14 @@ export default definePlugin(() => {
   chat.onNewMention(async (thread, message) => {
     await thread.subscribe()
     if (message.text?.trim()) {
+      await thread.startTyping()
       await start(replyToMessage, [thread.id, message.text])
     }
   })
 
   chat.onSubscribedMessage(async (thread, message) => {
     if (message.text?.trim()) {
+      await thread.startTyping()
       await start(replyToMessage, [thread.id, message.text])
     }
   })

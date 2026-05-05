@@ -29,10 +29,10 @@
   },
   "dependencies": {
     "@chat-adapter/state-memory": "~4.27.0",
-    "@workflow/ai": "^4.1.2",
     "ai": "^6.0.175",
-    "chat": "~4.27.0",
+    "chat": "^4.27.0",
     "chat-adapter-sendblue": "^0.2.0",
+    "evlog": "^2.16.0",
     "workflow": "^4.2.4",
     "zod": "^4.4.3"
   },
