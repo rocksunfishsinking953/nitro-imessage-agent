@@ -2,7 +2,23 @@
   "name": "nitro-imessage-agent",
   "private": true,
   "type": "module",
-  "description": "A simple iMessage agent built with Nitro, Chat SDK and the Vercel AI SDK",
+  "license": "Apache-2.0",
+  "description": "Durable iMessage AI agent template — Nitro v3 + Chat SDK + Vercel AI SDK + Vercel Workflow + evlog observability, talking iMessage via Sendblue.",
+  "keywords": [
+    "imessage",
+    "ai-agent",
+    "nitro",
+    "vercel-workflow",
+    "chat-sdk",
+    "vercel-ai-sdk",
+    "ai-gateway",
+    "sendblue",
+    "evlog",
+    "durable-execution",
+    "ai-chatbot",
+    "typescript"
+  ],
+  "homepage": "https://github.com/HugoRCD/nitro-imessage-agent#readme",
   "author": "HugoRCD",
   "funding": "https://github.com/sponsors/HugoRCD",
   "repository": {
@@ -22,7 +38,7 @@
     "prepare": "nitro prepare",
     "automd": "automd",
     "typecheck": "tsc --noEmit",
-    "test": "vitest",
+    "test": "vitest run --passWithNoTests",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "workflow:web": "npx workflow web"

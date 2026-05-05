@@ -54,8 +54,8 @@ Sendblue is webhook-based, so to receive iMessages on your local machine you exp
 **Prerequisites**
 
 - Node 20+ (use `corepack enable` to get pnpm)
-- A Sendblue account with API credentials and a provisioned phone line ([sendblue.com/pricing](https://sendblue.com/pricing) — the AI Agent plan at $100/month/line includes webhooks)
-- [ngrok](https://ngrok.com/download) installed and authenticated (`ngrok config add-authtoken <your-token>`)
+- A Sendblue account ([sendblue.com](https://sendblue.com)). The free tier with a shared line is enough to demo — webhooks work, replies to verified contacts work, and you get 10 contact slots. The AI Agent plan ($100/mo) is required if you want a dedicated number with higher inbound volume; see [pricing](https://sendblue.com/pricing).
+- [ngrok](https://ngrok.com/download) installed and authenticated with a free account (`ngrok config add-authtoken <your-token>`). Any HTTPS tunnel works — `cloudflared tunnel`, `localtunnel`, etc. — ngrok is just what we use here.
 
 **Install & run**
 
@@ -97,7 +97,7 @@ Sendblue runs in the cloud and just talks HTTP, so production is the same as loc
 
 That's it — no `vercel.json`, no cron, no Mac. The Vercel function spins up on each webhook and the Workflow runs durably in the background.
 
-> **Why Sendblue and not Photon?** Photon's [Spectrum dashboard](https://app.photon.codes/) gives you a `Project ID` + `Secret Key` for the new `spectrum-ts` SDK, which is **not compatible** with `chat-adapter-imessage`. The latter still uses the older `@photon-ai/advanced-imessage-kit` Enterprise SDK, which requires negotiated `serverUrl` + `apiKey` credentials from Photon sales. Sendblue gives you a working dedicated US line, webhooks, and SMS fallback — self-serve and no KYC for A2P — which is the cleanest path to production today.
+> **Why Sendblue and not Photon?** Photon's self-serve [Spectrum dashboard](https://app.photon.codes/) hands out credentials for the new `spectrum-ts` SDK, which isn't compatible with `chat-adapter-imessage` — the latter still uses Photon's older Enterprise SDK and needs negotiated credentials from Photon sales. Sendblue is self-serve, supports webhooks on the free tier, has SMS fallback, and ships US numbers without A2P KYC. Swap the adapter if your needs differ — `chat-adapter-imessage` (Photon Enterprise), `chat-adapter-blooio`, or any future Chat SDK iMessage adapter all plug in the same way.
 
 ## Configuration reference
 
@@ -247,6 +247,10 @@ pnpm typecheck  # tsc --noEmit
 - [evlog drain adapters](https://www.evlog.dev/adapters)
 - [Nitro](https://nitro.build)
 - [ngrok](https://ngrok.com/download)
+
+## Contributing
+
+Contributions are welcome — see [CONTRIBUTING.md](./CONTRIBUTING.md) for setup, conventions, and how to add a tool/step. By participating you agree to the [Code of Conduct](./CODE_OF_CONDUCT.md). Security issues: see [SECURITY.md](./SECURITY.md).
 
 ## License
 
